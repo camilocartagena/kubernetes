@@ -75,7 +75,7 @@ helm repo update
 ## 3. 🔐 Obtener el token del Data Plane en Kong Konnect
 
 1. Ir a Konnect > Runtime Manager > Add Runtime
-2. Seleccionar: Gateway > Kubernetes > Hybrid Mode
+2. Seleccionar: new Gateway > Kubernetes > Selft-Manager Hybrid Mode
 3. Copiar el DP JWT Token
 
 ## 4. 📁 Crear archivo kong-values.yaml con configuración avanzada

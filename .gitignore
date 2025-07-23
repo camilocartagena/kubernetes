@@ -1,0 +1,8 @@
+# Ignorar el archivo de configuración con certificados
+deployment/kong/kong-values.yaml
+
+# Otros ignores comunes
+*.log
+*.env
+node_modules/
+.DS_Store
