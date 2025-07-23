@@ -1,0 +1,52 @@
+env:
+  role: data_plane
+  cluster_control_plane: "your-control-plane-id.konghq.com:443"
+  cluster_server_name: "your-control-plane-id.konghq.com"
+  cluster_telemetry_endpoint: "telemetry.konghq.com:443"
+  cluster_cert: |
+    -----BEGIN CERTIFICATE-----
+    (tu certificado aquí)
+    -----END CERTIFICATE-----
+  cluster_cert_key: |
+    -----BEGIN PRIVATE KEY-----
+    (tu clave aquí)
+    -----END PRIVATE KEY-----
+  lua_ssl_trusted_certificate: /etc/secrets/kong-cluster-cert/tls.crt
+  lua_ssl_verify_depth: 2
+  database: "off"
+
+secretVolumes:
+  - kong-cluster-cert
+
+volumes:
+  - name: kong-cluster-cert
+    secret:
+      secretName: kong-cluster-cert
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 1Gi
+  requests:
+    cpu: 200m
+    memory: 512Mi
+
+livenessProbe:
+  httpGet:
+    path: /status
+    port: 8001
+  initialDelaySeconds: 15
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /status
+    port: 8001
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+ingressController:
+  enabled: false
+
+proxy:
+  type: LoadBalancer
