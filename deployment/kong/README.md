@@ -83,70 +83,174 @@ helm repo update
 ```yaml
 # kong-values.yaml
 
-env:
-  role: data_plane
-  cluster_control_plane: "your-control-plane-id.konghq.com:443"
-  cluster_server_name: "your-control-plane-id.konghq.com"
-  cluster_telemetry_endpoint: "telemetry.konghq.com:443"
-  cluster_cert: |
-    -----BEGIN CERTIFICATE-----
-    (tu certificado aquí)
-    -----END CERTIFICATE-----
-  cluster_cert_key: |
-    -----BEGIN PRIVATE KEY-----
-    (tu clave aquí)
-    -----END PRIVATE KEY-----
-  lua_ssl_trusted_certificate: /etc/secrets/kong-cluster-cert/tls.crt
-  lua_ssl_verify_depth: 2
-  database: "off"
+image:
+  repository: kong/kong-gateway
+  tag: "3.11"
 
 secretVolumes:
-  - kong-cluster-cert
+  - your-certificated
 
-volumes:
-  - name: kong-cluster-cert
-    secret:
-      secretName: kong-cluster-cert
+admin:
+  enabled: false
 
-resources:
-  limits:
-    cpu: 500m
-    memory: 1Gi
-  requests:
-    cpu: 200m
-    memory: 512Mi
-
-livenessProbe:
-  httpGet:
-    path: /status
-    port: 8001
-  initialDelaySeconds: 15
-  periodSeconds: 10
-
-readinessProbe:
-  httpGet:
-    path: /status
-    port: 8001
-  initialDelaySeconds: 5
-  periodSeconds: 10
+env:
+  role: data_plane
+  database: "off"
+  cluster_mtls: pki
+  cluster_control_plane: your-control-plane-id.konghq.com::443
+  cluster_dp_labels: "type:docker-kubernetesOS"
+  cluster_server_name: your-control-plane-id.konghq.com:
+  cluster_telemetry_endpoint: telemetry.konghq.com:443:443
+  cluster_telemetry_server_name: telemetry.konghq.com
+  cluster_cert: /etc/secrets/your-certificated/tls.crt
+  cluster_cert_key: /etc/secrets/your-certificated/tls.key
+  lua_ssl_trusted_certificate: system
+  konnect_mode: "on"
+  vitals: "off"
+  nginx_worker_processes: "1"
+  upstream_keepalive_max_requests: "100000"
+  nginx_http_keepalive_requests: "100000"
+  proxy_access_log: "off"
+  dns_stale_ttl: "3600"
+  router_flavor: expressions
 
 ingressController:
   enabled: false
+  installCRDs: false
 
-proxy:
-  type: LoadBalancer
+resources:
+  requests:
+    cpu: 1
+    memory: "2Gi"
+
+manager:
+  enabled: false
+
 ```
 
 ## 5. 🔐 Crear el secreto kong-cluster-cert en Kubernetes
 
 ```bash
-   kubectl create secret generic kong-cluster-cert \
-    --from-file=tls.crt=cluster.crt \
-    --from-file=tls.key=cluster.key \
-    -n kong
+    kubectl create secret tls kong-cluster-cert -n kong --cert=tls.crt --key=tls.key
 ```
 
+Sí, en Kubernetes existen varios tipos de secretos, y los dos más comunes son:
+
+-generic
+-tls
+
+A continuación te explico qué son, en qué se diferencian, y cuándo usar cada uno.
+
+### 🔑 1. generic Secret
+
+Es un tipo genérico que tú defines manualmente con pares clave-valor (por ejemplo, contraseñas, certificados, tokens, etc.).
+
+➕ Se usa para:
+API keys
+
+Archivos .crt, .key, .pem
+
+Passwords, config files, etc.
+
+🛠 Ejemplo:
+
+```bash
+kubectl create secret generic mi-secreto --from-file=tls.crt  --from-file=tls.key -n kong
+```
+
+Esto crea un secreto con:
+
+```yaml
+data:
+  cluster.crt: <base64-encoded>
+  cluster.key: <base64-encoded>
+```
+
+✅ Flexible y se adapta a cualquier necesidad.
+
+### 🔒 2. tls Secret
+
+Es un tipo especializado para certificados TLS/SSL. Kubernetes espera dos claves exactas:
+
+tls.crt → el certificado
+
+tls.key → la clave privada
+
+➕ Se usa para:
+Ingress TLS
+
+Kong TLS communication (cuando se necesita un secreto de tipo tls)
+
+Servicios que requieren tls.key y tls.crt explícitamente
+
+🛠 Ejemplo:
+
+```bash
+kubectl create secret tls kong-cluster-cert --cert=tls.crt --key=tls.key -n kong
+```
+
+Esto crea automáticamente:
+
+```yaml
+type: kubernetes.io/tls
+data:
+tls.crt: <base64-encoded>
+tls.key: <base64-encoded>
+```
+
+✅ Es requerido por controladores como NGINX Ingress o Kong si el type debe ser tls.
+
 > 📝 Los archivos cluster.crt y cluster.key vienen en el bundle que descargas desde Konnect al agregar un nuevo runtime.
+
+Si estás trabajando en Kubernetes, aquí te muestro cómo ver, detallar y eliminar secretos actuales en un namespace específico (o todos).
+
+### 🔍 1. Ver todos los secretos en un namespace
+
+```bash
+kubectl get secrets -n <namespace>
+```
+
+Ejemplo:
+
+```bash
+kubectl get secrets -n default
+```
+
+Para todos los namespaces:
+
+```bash
+kubectl get secrets --all-namespaces
+```
+
+### 📄 2. Ver el contenido de un secreto (codificado en base64)
+
+```bash
+kubectl get secret <nombre-del-secreto> -n <namespace> -o yaml
+```
+
+Si quieres ver los valores decodificados (por ejemplo, un tls.crt o password), puedes usar este comando:
+
+```bash
+kubectl get secret <nombre> -n <namespace> -o jsonpath="{.data.<clave>}" | base64 -d
+```
+
+Ejemplo para ver el certificado:
+
+```bash
+kubectl get secret kong-cluster-cert -n kong -o jsonpath="{.data.tls.crt}" | base64 -d
+```
+
+### 🧹 3. Eliminar un secreto
+
+```bash
+kubectl delete secret <nombre-del-secreto> -n <namespace>
+```
+
+Ejemplo:
+
+```bash
+kubectl delete secret kong-cluster-cert -n kong
+```
 
 ## 6. 🚀 Instalar Kong con Helm
 
@@ -154,7 +258,29 @@ proxy:
    helm install kong kong/kong -n kong -f kong-values.yaml
 ```
 
-## 7. ✅ Verificar que Kong esté funcionando
+## 7. 🚀 Luego haz port-forward:
+
+```bash
+   kubectl port-forward svc/kong-admin -n kong 8001:8001 curl http://localhost:8001/status
+```
+
+## 8. 🚀 Actualizar Kong con Helm
+
+Si ya existe el release y solo quieres aplicar cambios:
+
+```bash
+   helm upgrade --install kong kong/kong -n kong --create-namespace -f kong-values.yaml
+```
+
+## 9. 🚀 Eliminar el release existente
+
+Si ya existe el release y solo quieres eliminarlo:
+
+```bash
+   helm uninstall kong -n kong
+```
+
+## 9. ✅ Verificar que Kong esté funcionando
 
 ```bash
    kubectl get pods -n kong

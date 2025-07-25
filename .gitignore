@@ -1,5 +1,7 @@
 # Ignorar el archivo de configuración con certificados
 deployment/kong/kong-values.yaml
+deployment/kong/tls.crt
+deployment/kong/tls.key
 
 # Otros ignores comunes
 *.log
